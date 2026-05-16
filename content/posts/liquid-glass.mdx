@@ -1,0 +1,40 @@
+---
+title: "复刻液态玻璃：从 backdrop-filter 到光线折射"
+date: "2026-05-08"
+excerpt: "用 CSS backdrop-filter 加 SVG feDisplacementMap 做出近似 iOS 26 的玻璃质感。"
+tags: ["css", "design"]
+maturity: "budding"
+---
+
+苹果在 iOS 26 与 macOS Tahoe 上推出的 Liquid Glass，是一种比传统毛玻璃更"活"的材质——它不只是模糊背景，
+还会**折射**光线、在曲面边缘产生轻微的视差与高光。要在 web 上还原，需要把几个分别独立的视觉特性叠加起来。
+
+## 三层结构
+
+最朴素的做法是把每个特性切成一层 CSS：
+
+- 底层：`backdrop-filter: blur(28px) saturate(180%)`，吃掉背景细节
+- 中层：SVG `<feDisplacementMap>` 把局部像素轻微推开，模拟折射
+- 顶层：径向 / 线性高光渐变，给左上角一道柔和的曲面反光
+
+```css
+.glass {
+  backdrop-filter: blur(28px) saturate(180%);
+  background: linear-gradient(135deg,
+    rgba(255,255,255,0.55),
+    rgba(255,255,255,0.15));
+  border: 1px solid rgba(255,255,255,0.4);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.6) inset,
+    0 30px 60px -20px rgba(15,23,42,0.18);
+}
+```
+
+## 折射感
+
+`feDisplacementMap` 的参数中 `scale` 控制位移强度，**保持在 8 以下**才不会显得 glitchy。
+噪点贴图可以是低分辨率 `<feTurbulence>` 产物——把 `baseFrequency` 拉到 0.012 左右，再用 `<feGaussianBlur>` 抚平。
+
+## 活感
+
+最后一步是 hover 时让左上角高光跟随鼠标轻微位移。这层动效不能急，**150ms 的 ease-out** 是上限。

@@ -1,0 +1,29 @@
+---
+title: "Framer Motion 的 layoutId：共享元素过渡的工作原理"
+date: "2026-03-15"
+excerpt: "为什么 layoutId 是 SPA 路由间共享元素过渡最稳的方案，以及它的几个坑。"
+tags: ["react", "animation"]
+maturity: "budding"
+---
+
+`layoutId` 是 Framer Motion 用于跨组件、跨路由共享布局的关键机制。
+当一个组件挂载、而另一个**同 layoutId 的组件正在卸载**时，Framer 会自动计算二者的 FLIP 差，
+并用 spring 把新组件从旧位置过渡到目标位置。
+
+## 关键约束
+
+- 两个 motion 元素必须**同时存在**于 React 树中至少一帧，否则 FLIP 计算失败。
+  实践中要么用 `AnimatePresence`，要么用 portal 把退出元素挂在外层。
+- 不要嵌套两个相同 `layoutId`，否则 transform 会被叠加。
+- 文字大小变化时，建议同时用 `layout` prop 让子元素也参与过渡，避免 reflow 跳变。
+
+## 与 View Transitions API 的对比
+
+| 维度 | layoutId | View Transitions API |
+|----|----|----|
+| 跨浏览器 | 稳定 | Safari 26+ 才支持 |
+| 嵌套元素 | 需手动声明 | 自动 |
+| 调试 | React DevTools | 浏览器原生 |
+| 中断恢复 | 支持 | 部分支持 |
+
+对生产项目，目前仍建议 **layoutId 兜底，View Transitions API 渐进增强**。

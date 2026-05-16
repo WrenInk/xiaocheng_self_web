@@ -1,0 +1,21 @@
+---
+title: "为什么我放弃了 scroll-snap"
+date: "2026-02-01"
+excerpt: "原生 scroll-snap 写起来很爽，但一旦动效要超过 CSS 能表达的范围，就要换 JS。"
+tags: ["css", "ux"]
+maturity: "seedling"
+---
+
+`scroll-snap-type: y mandatory` 写起来只有一行，但它把动画曲线交给浏览器——
+而浏览器对一次滚轮滴答的解释，每家都不一样。
+
+## 三个让我换方案的问题
+
+1. **不能控制曲线**：snap 的过渡是浏览器默认 ease，无法换成 ease-out-quart
+2. **不能监听进度**：要做时间线同步，必须用 IntersectionObserver 自己算
+3. **触屏 momentum 难驯**：iOS 上一次滑动跨好几个 snap 点是常事
+
+## 转向 JS
+
+最终用 `wheel` 事件 + 节流 + 索引状态自己管：滚轮一次滴答推进 ±1 索引，
+索引变化用 Framer Motion 的 spring 驱动 transform，曲线、时长完全可控。
