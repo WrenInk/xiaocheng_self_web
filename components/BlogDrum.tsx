@@ -341,7 +341,7 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
                 let offset = i - active;
                 if (offset > N / 2) offset -= N;
                 else if (offset < -N / 2) offset += N;
-                const TILE_PITCH = 100; // 96px tile + 4px gap
+                const TILE_PITCH = 132; // 128px tile + 4px gap
                 const x = offset * TILE_PITCH;
                 const dist = Math.abs(offset);
                 const isActive = offset === 0;
@@ -364,8 +364,8 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
                     transition={{ type: "spring", stiffness: 220, damping: 28, mass: 0.7 }}
                     style={{
                       left: "50%",
-                      width: 96,
-                      marginLeft: -48,
+                      width: 128,
+                      marginLeft: -64,
                       marginTop: -22,
                       pointerEvents: pointerEnabled ? "auto" : "none",
                     }}
@@ -380,7 +380,7 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
                       <span className={`w-1 h-1 rounded-full ${MATURITY_DOT[p.maturity]}`} />
                       <span
                         className={[
-                          "text-[10px] tabular-nums tracking-wide",
+                          "text-[10px] tabular-nums tracking-wide whitespace-nowrap",
                           isActive ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]",
                         ].join(" ")}
                       >
