@@ -51,11 +51,37 @@ function withBase(path: string): string {
 export function BlogDrum({ posts, bodies, initialSlug }: Props) {
   const reduce = useReducedMotion();
 
+  // Tag filter state. `null` = "all". When set, drum/rail only show posts
+  // whose tags include this string.
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+
+  // Unique tags in order-of-first-appearance across the (date-desc) post list.
+  // No sorting beyond that — keeps the panel's order stable & predictable.
+  const allTags = useMemo(() => {
+    const seen = new Set<string>();
+    const order: string[] = [];
+    for (const p of posts) {
+      for (const t of p.tags) {
+        if (!seen.has(t)) {
+          seen.add(t);
+          order.push(t);
+        }
+      }
+    }
+    return order;
+  }, [posts]);
+
+  // Posts the drum/rail actually display.
+  const filteredPosts = useMemo(() => {
+    if (!activeTag) return posts;
+    return posts.filter((p) => p.tags.includes(activeTag));
+  }, [posts, activeTag]);
+
   const initialIndex = useMemo(() => {
     if (!initialSlug) return 0;
-    const i = posts.findIndex((p) => p.slug === initialSlug);
+    const i = filteredPosts.findIndex((p) => p.slug === initialSlug);
     return i === -1 ? 0 : i;
-  }, [posts, initialSlug]);
+  }, [filteredPosts, initialSlug]);
 
   const [active, setActive] = useState(initialIndex);
   const [opened, setOpened] = useState<string | null>(initialSlug ?? null);
@@ -71,18 +97,28 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
   const drumRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
 
-  const N = posts.length;
+  const N = filteredPosts.length;
+  const isEmpty = N === 0;
 
-  // Index loops: last -> first -> last.
+  // Index loops: last -> first -> last (guarded for empty filter result).
   const wrap = useCallback(
-    (i: number) => ((i % N) + N) % N,
+    (i: number) => (N === 0 ? 0 : ((i % N) + N) % N),
     [N]
   );
 
   const step = useCallback(
-    (delta: number) => setActive((prev) => wrap(prev + delta)),
-    [wrap]
+    (delta: number) => {
+      if (N === 0) return;
+      setActive((prev) => wrap(prev + delta));
+    },
+    [wrap, N]
   );
+
+  // When the filter shrinks past `active`, snap back to first card so the
+  // drum doesn't render an out-of-bounds slot.
+  useEffect(() => {
+    if (active >= N && N > 0) setActive(0);
+  }, [N, active]);
 
   const openCard = useCallback(
     (slug: string) => {
@@ -109,6 +145,9 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
       if (m) {
         const slug = decodeURIComponent(m[1]);
         if (posts.some((p) => p.slug === slug)) {
+          // Clear filter on back/forward to a slug so the drum shows
+          // the post even if a filter would have excluded it.
+          setActiveTag(null);
           setOpened(slug);
           setActive(posts.findIndex((p) => p.slug === slug));
           return;
@@ -170,13 +209,13 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
         step(-1);
       } else if (e.key === "Enter") {
         e.preventDefault();
-        const slug = posts[active]?.slug;
+        const slug = filteredPosts[active]?.slug;
         if (slug) openCard(slug);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, opened, closing, step, posts, openCard, closeCard]);
+  }, [active, opened, closing, step, filteredPosts, openCard, closeCard]);
 
   useLayoutEffect(() => {
     if (!opened) {
@@ -203,7 +242,7 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
     const stepAngleDeg = 24;
     const radius = 560;
     const half = N / 2;
-    return posts.map((p, i) => {
+    return filteredPosts.map((p, i) => {
       // Shortest cyclic signed distance so the drum truly loops.
       let offset = i - active;
       if (offset > half) offset -= N;
@@ -219,7 +258,7 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
       const visible = abs <= 3;
       return { post: p, i, offset, angle, tx, tz, scale, opacity, visible };
     });
-  }, [posts, active, N]);
+  }, [filteredPosts, active, N]);
 
   const openedPost = opened ? posts.find((p) => p.slug === opened) ?? null : null;
 
@@ -247,6 +286,7 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
           className="relative w-full h-full flex items-center justify-center"
           style={{ transformStyle: "preserve-3d" }}
         >
+          <AnimatePresence mode="popLayout">
           {drum.map(({ post, i, offset, angle, tx, tz, scale, opacity, visible }) => {
             if (!visible) return null;
             const focused = offset === 0;
@@ -263,7 +303,7 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
                   else setActive(i);
                 }}
                 className="absolute outline-none"
-                initial={false}
+                initial={{ scale: 0.5, opacity: 0 }}
                 animate={
                   reduce
                     ? {
@@ -279,6 +319,7 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
                         opacity: isSource ? 0 : opacity,
                       }
                 }
+                exit={{ scale: 0.4, opacity: 0, z: -200 }}
                 transition={{
                   type: "spring",
                   stiffness: 200,
@@ -296,6 +337,27 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
               </motion.div>
             );
           })}
+          </AnimatePresence>
+          {isEmpty && (
+            <motion.div
+              key="empty-state"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="absolute flex flex-col items-center gap-3 text-center"
+            >
+              <span className="text-[14px] text-[var(--color-ink-soft)] tracking-tight font-[450]">
+                #{activeTag} 下暂无文章
+              </span>
+              <button
+                onClick={() => setActiveTag(null)}
+                className="text-[12px] text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors tracking-tight"
+              >
+                清除过滤 →
+              </button>
+            </motion.div>
+          )}
         </div>
       </motion.div>
 
@@ -310,6 +372,46 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
           />
         )}
       </AnimatePresence>
+
+      {/* Tag filter — top-left floating panel. Vertically stacked pills,
+          "全部" at the top, then unique tags in the order they first
+          appear in the post list. layoutId on the active background lets
+          it slide between pills like a segmented control. */}
+      <motion.div
+        className="fixed top-24 left-4 sm:left-8 z-30"
+        animate={{ opacity: opened ? 0 : 1, x: opened ? -16 : 0 }}
+        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        style={{ pointerEvents: opened ? "none" : "auto" }}
+      >
+        <div className="glass glass-inner-glow rounded-2xl p-1.5 relative overflow-hidden">
+          <span className="glass-gloss rounded-2xl" />
+          <div className="relative z-10 flex flex-col gap-0.5 max-h-[calc(100dvh-220px)] overflow-y-auto no-scrollbar w-[112px]">
+            <TagPill
+              active={activeTag === null}
+              onClick={() => {
+                if (closing) return;
+                setActiveTag(null);
+                setActive(0);
+              }}
+            >
+              全部
+            </TagPill>
+            {allTags.map((t) => (
+              <TagPill
+                key={t}
+                active={activeTag === t}
+                onClick={() => {
+                  if (closing) return;
+                  setActiveTag(t);
+                  setActive(0);
+                }}
+              >
+                #{t}
+              </TagPill>
+            ))}
+          </div>
+        </div>
+      </motion.div>
 
       {/* Timeline rail — cyclic, mirrors the drum's wrap behavior.
           Tiles are absolutely positioned by cyclic offset from active.
@@ -335,7 +437,8 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
             <span className="glass-gloss rounded-2xl" />
             {/* Center anchor — tiles position themselves via x relative to this point */}
             <div className="relative z-10 h-full w-full">
-              {posts.map((p, i) => {
+              <AnimatePresence mode="popLayout">
+              {filteredPosts.map((p, i) => {
                 // Same cyclic-distance math as the drum: find shortest
                 // signed offset, so wrap-around files slide the short way.
                 let offset = i - active;
@@ -359,8 +462,9 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
                     className="group absolute top-1/2 text-left rounded-lg px-2.5 py-1.5 transition-colors"
                     aria-label={`Go to ${p.title}`}
                     aria-current={isActive}
-                    initial={false}
-                    animate={{ x, opacity }}
+                    initial={{ opacity: 0, scale: 0.7 }}
+                    animate={{ x, opacity, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.6 }}
                     transition={{ type: "spring", stiffness: 220, damping: 28, mass: 0.7 }}
                     style={{
                       left: "50%",
@@ -400,6 +504,7 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
                   </motion.button>
                 );
               })}
+              </AnimatePresence>
             </div>
           </div>
           <div className="mt-3 flex items-center justify-center gap-2 text-[11px] text-[var(--color-ink-muted)] tracking-wide">
@@ -422,6 +527,43 @@ export function BlogDrum({ posts, bodies, initialSlug }: Props) {
 }
 
 /* ============================================================ */
+
+function TagPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative px-2.5 py-1.5 rounded-md text-left text-[11.5px] font-medium tracking-tight transition-colors"
+      aria-pressed={active}
+    >
+      {active && (
+        <motion.span
+          layoutId="tag-pill-active"
+          className="absolute inset-0 rounded-md bg-[var(--color-accent)] shadow-[0_4px_12px_-4px_rgba(184,89,60,0.5)]"
+          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+        />
+      )}
+      <span
+        className={[
+          "relative z-10 whitespace-nowrap",
+          active
+            ? "text-white"
+            : "text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]",
+        ].join(" ")}
+      >
+        {children}
+      </span>
+    </button>
+  );
+}
 
 function DrumCard({
   post,
